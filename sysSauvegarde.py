@@ -1,24 +1,11 @@
 """
-Bibliothèque : sysSauvegarde
+AutoBackupPy v2 🚀
+Développé avec ❤️ par ChatGPT 4 & BonoBeau
 
-📌 Objectif :
-Cette bibliothèque permet la sauvegarde automatique de tout fichier Python qui l'importe et appelle `sauvegardeAuto()`.
-Elle crée une copie du script en cours d'exécution dans un sous-dossier `Historic/`, en conservant uniquement les 20 dernières versions.
-Très utile pour éviter la perte de travail ou retrouver une version antérieure d'un fichier sans versionning complexe.
-
-✅ Utilisation :
-Ajouter simplement au début d’un script (ou module) :
-    from sysSauvegarde import sauvegardeAuto
-    sauvegardeAuto()
-
-Cela déclenchera automatiquement une sauvegarde de ce fichier.
-
-🌍 Compatibilité :
-Cette bibliothèque est compatible avec tous les environnements Python standard (y compris Pythonista, VSCode, terminal, etc.) à condition que les permissions d'écriture soient valides dans le dossier d'exécution.
-
-🗃 Limitation :
-Ne gère que les fichiers `.py` exécutés directement ou importés.
-
+📌 Sauvegarde automatique intelligente, portable et configurable pour vos scripts Python.
+- Compatible avec la V1 (appel sans paramètre)
+- Gestion d'un projet via nameProject
+- Nettoyage automatique des anciennes versions
 """
 
 import os
@@ -26,42 +13,81 @@ import shutil
 from datetime import datetime
 import inspect
 
+# Configuration interne (initialisée au premier appel)
+_config = {
+    "initialized": False,
+    "nameProject": "",
+    "log": True,
+    "limit": 20,
+    "horodatage": datetime.now().strftime("%Y%m%d-%H%M%S"),
+}
 
-def sauvegardeAuto():
+
+def sauvegardeAuto(nameProject="", LOG_ACTIVE=True, NB_SAUVEGARDE=20):
+    """
+    Déclenche la sauvegarde automatique du fichier appelant.
+
+    Paramètres :
+    - nameProject (str) : Nom du projet pour organiser les sauvegardes ("" par défaut, ou "auto" pour détecter le nom du script principal).
+    - LOG_ACTIVE (bool) : Affiche ou non les logs de sauvegarde.
+    - NB_SAUVEGARDE (int) : Nombre maximum de sauvegardes à conserver.
+
+    Utilisation simple :
+        from sysSauvegarde import sauvegardeAuto
+        sauvegardeAuto()
+
+    Utilisation avancée :
+        sauvegardeAuto(nameProject="MonProjet", LOG_ACTIVE=False, NB_SAUVEGARDE=10)
+    """
+    if not _config["initialized"]:
+        _config["nameProject"] = nameProject
+        _config["log"] = LOG_ACTIVE
+        _config["limit"] = NB_SAUVEGARDE
+        _config["initialized"] = True
+
+        if _config["nameProject"] == "auto":
+            _config["nameProject"] = os.path.basename(
+                inspect.stack()[-1].filename
+            ).split(".")[0]
+
     try:
-        # Détecte automatiquement le fichier appelant
         frame = inspect.stack()[1]
         caller_file = frame.filename
         if not caller_file.endswith(".py"):
-            return  # Ignore si ce n’est pas un fichier Python
+            return
 
         nom_fichier = os.path.basename(caller_file)
         nom_repertoire = os.path.dirname(caller_file)
-        dossier_historique = os.path.join(nom_repertoire, "Historic")
-
-        # Crée le dossier Historic s’il n’existe pas
-        if not os.path.exists(dossier_historique):
-            os.mkdir(dossier_historique)
-
-        # Format du nom de sauvegarde
-        horodatage = datetime.now().strftime("%Y%m%d-%H%M%S")
-        sauvegarde = os.path.join(
-            dossier_historique, f"{nom_fichier[:-3]}_{horodatage}.py"
+        dossier_historique = os.path.join(
+            nom_repertoire, "Historic", _config["nameProject"], _config["horodatage"]
         )
 
-        # Copie le fichier
+        if not os.path.exists(dossier_historique):
+            os.makedirs(dossier_historique)
+
+        sauvegarde = os.path.join(dossier_historique, nom_fichier)
         shutil.copy2(caller_file, sauvegarde)
 
-        # Ne garde que les 20 dernières sauvegardes pour ce fichier
-        sauvegardes = sorted(
-            [
-                f
-                for f in os.listdir(dossier_historique)
-                if f.startswith(nom_fichier[:-3])
-            ],
-            reverse=True,
-        )
-        for ancienne in sauvegardes[20:]:
-            os.remove(os.path.join(dossier_historique, ancienne))
+        if _config["log"]:
+            print(f"✅ Sauvegarde : {sauvegarde}")
+
+        # Nettoyage des anciennes sauvegardes
+        if _config["limit"]:
+            dossier_parent = os.path.join(
+                nom_repertoire, "Historic", _config["nameProject"]
+            )
+            if os.path.exists(dossier_parent):
+                dossiers = sorted(
+                    [
+                        d
+                        for d in os.listdir(dossier_parent)
+                        if os.path.isdir(os.path.join(dossier_parent, d))
+                    ],
+                    reverse=True,
+                )
+                for ancien in dossiers[_config["limit"] :]:
+                    shutil.rmtree(os.path.join(dossier_parent, ancien))
+
     except Exception as e:
-        print(f"❌ Erreur dans sauvegardeAuto: {e}")
+        if _config["log"]:
+            print(f"❌ Erreur sauvegardeAuto: {e}")
